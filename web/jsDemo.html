@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8"/>
+	<title>Guetzli.js JavaScript Encoder</title>
+	<meta name="description" content="" />
+    <style>
+body {
+	font-family:Roboto;
+}
+.example {
+    border: 1px solid #ccc;
+    padding: 10px;
+}
+.drop_zone {
+    border: 2px dashed #bbb;
+    border-radius: 5px;
+    color: #bbb;
+    padding: 25px;
+    text-align: center;
+}
+.thumb {
+    border: 1px solid #000;
+    height: 75px;
+    margin: 10px 5px 0 0;
+}
+#progress_bar {
+    border: 1px solid #000;
+    clear: both;
+    font-size: 14px;
+    margin: 10px 0;
+    opacity: 0;
+    padding: 3px;
+    transition: opacity 1s linear 0s;
+}
+#progress_bar.loading {
+    opacity: 1;
+}
+#progress_bar .percent {
+    background-color: #99ccff;
+    height: auto;
+    width: 0;
+}
+#byte_content {
+    margin: 5px 0;
+    max-height: 100px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+#byte_range {
+    margin-top: 5px;
+}
+.examples {
+	padding: 5px 0;
+}
+</style>
+ <!--   <script>
+
+          var xhr = new XMLHttpRequest();
+          xhr.open('GET', 'guetzli.wasm', true);
+          xhr.responseType = 'arraybuffer';
+          xhr.onload = function() {
+            Module.wasmBinary = xhr.response;
+
+          var script = document.createElement('script');
+          script.src = "guetzli.js";
+          document.body.appendChild(script);
+
+          };
+          xhr.send(null);
+
+</script>-->
+</head>
+<link href="https://fonts.googleapis.com/css?family=Roboto:400,700" rel="stylesheet" type="text/css">
+<body>
+<h1>Guetzli.js JavaScript Encoder</h1>
+<script type='text/javascript'>
+var Module = {
+    'noInitialRun' : false 
+};
+</script>
+<p>Guetzli encoder in JavaScript, using <a href="https://github.com/google/guetzli">guetzli</a> compiled with <a href="https://github.com/kripken/emscripten/wiki">Emscripten</a>. </p>
+<p>Github repository: <a href="https://github.com/dominikhlbg/Guetzli.js">https://github.com/dominikhlbg/Guetzli.js</a> - WebAssembly Version: <a href="./wasmDemo.html">wasmDemo.html</a></p>
+<input type="file" id="file_encode" name="file_encode" title="Chose a file to encode" />
+Quality:
+<input type="text" id="quality_encode" name="quality_encode" title="Encode quality 0..100" value="95" />
+[0...100]
+<div class="examples">Example Image:
+  <input type="button" value="Lenna.jpg" name="./Lenna.jpg" onclick="loadfile(this.name)"></div>
+<div class="drop_zone" id="drop_encode">Drop file here to encode</div>
+<output id="list_encode"></output>
+
+	<script src="guetzli.js"></script>
+<script>
+//function init() {
+  var Guetzli_encodeRGBA = Module.cwrap('Guetzli_encodeRGBA', 'int', ['array', 'number', 'number', 'number', 'number']);
+  var Guetzli_encode = Module.cwrap('Guetzli_encode', 'int', ['number','number']);
+//}
+function Uint8ToString(u8a){
+  var CHUNK_SZ = 0x8000;
+  var c = [];
+  for (var i=0; i < u8a.length; i+=CHUNK_SZ) {
+    c.push(String.fromCharCode.apply(null, u8a.subarray(i, i+CHUNK_SZ)));
+  }
+  return c.join("");
+}
+  function handleSelectEncode(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+
+    var files = (typeof evt.dataTransfer!=='undefined')?evt.dataTransfer.files:evt.target.files;
+	var file = files[0];
+
+      var reader = new FileReader();
+
+      reader.onload = (function(theFile) {
+        return function(e) {
+			var quality = document.getElementById('quality_encode').value;
+			//var input = new Uint8Array(e.target.result);
+			if (theFile.type.indexOf("image/jpeg") == -1&&theFile.type.indexOf("image/png") == -1) 
+			{
+				var canvas = document.createElement('canvas');
+				var ctx = canvas.getContext("2d");
+				var img = new Image();
+				img.onload = function() {
+					var width=img.width;
+					var height=img.height;
+					canvas.width=width;
+					canvas.height=height;
+					ctx.drawImage(img, 0, 0);
+					var imgData=new Uint8Array(ctx.getImageData(0,0,width,height).data);
+					var output=new Array();
+					var start = (new Date()).getTime();
+					if(!Guetzli_encodeRGBA(imgData,width,height,quality,1))
+					output=FS.readFile('out.jpg');
+					var end = (new Date()).getTime();
+					//console.log(result.length);
+					var uncompressed_bytes =output.length;
+					var duration=(end-start)/1000;
+					var speed = uncompressed_bytes / (1024 * 1024)/duration;
+					var span = document.createElement('div');
+					span.innerHTML = 'Input: '+theFile.size+' Size: '+uncompressed_bytes+' - Guetzli encode speed: '+speed.toFixed(2)+'MB/s '+(end-start)+'ms'+' - File: (base64) <a target="_blank" href="data:application/octet-stream;base64,'+btoa(String.fromCharCode.apply(null, output))+'" download="'+file.name+'.jpg'+'">Filelink</a>';
+          document.getElementById('list_encode').appendChild(span);
+				}
+				img.src = e.target.result;
+			} else {
+				var start = (new Date()).getTime();
+				FS.writeFile('in.ext',new Uint8Array(e.target.result),{ encoding: "binary" });
+				if(!Guetzli_encode(quality,1))
+				output=FS.readFile('out.jpg');
+				var end = (new Date()).getTime();
+				//console.log(result.length);
+				var uncompressed_bytes =output.length;
+				var duration=(end-start)/1000;
+				var speed = uncompressed_bytes / (1024 * 1024)/duration;
+				var span = document.createElement('div');
+				span.innerHTML = 'Input: '+theFile.size+' Size: '+uncompressed_bytes+' - Guetzli encode speed: '+speed.toFixed(2)+'MB/s '+(end-start)+'ms'+' - File: (base64) <a target="_blank" href="data:application/octet-stream;base64,'+btoa(String.fromCharCode.apply(null, output))+'" download="'+file.name+'.jpg'+'">Filelink</a>';
+          document.getElementById('list_encode').appendChild(span);
+			}
+        };
+      })(file);
+	  if (file.type.indexOf("image") == -1) {alert('Only images support');return;}
+	if (file.type.indexOf("image/jpeg") == -1&&file.type.indexOf("image/png") == -1)
+	reader.readAsDataURL(file); else
+      reader.readAsArrayBuffer(file);
+  }
+
+ function loadfile(filename) {
+  var quality = document.getElementById('quality_encode').value;
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', filename);
+  xhr.responseType = 'arraybuffer';
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState == 4 && xhr.status == 200) {
+		var start = (new Date()).getTime();
+		var data = new Uint8Array(xhr.response);
+		FS.writeFile('in.ext',data,{ encoding: "binary" });
+		if(!Guetzli_encode(quality,1))
+		output=FS.readFile('out.jpg');
+		var end = (new Date()).getTime();
+		//console.log(result.length);
+		var uncompressed_bytes =output.length;
+		var duration=(end-start)/1000;
+		var speed = uncompressed_bytes / (1024 * 1024)/duration;
+		var span = document.createElement('div');
+		span.innerHTML = 'Input: '+data.length+' Size: '+uncompressed_bytes+' - Guetzli encode speed: '+speed.toFixed(2)+'MB/s '+(end-start)+'ms'+' - File: (base64) <a target="_blank" href="data:application/octet-stream;base64,'+btoa(String.fromCharCode.apply(null, output))+'" download="'+filename+'.jpg'+'">Filelink</a>';
+  document.getElementById('list_encode').appendChild(span);
+    }
+  };
+  xhr.send();
+}
+function handleDragOver(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    evt.dataTransfer.dropEffect = 'copy';
+  }
+
+  document.getElementById('file_encode').addEventListener('change', handleSelectEncode, false);
+  var dropZone = document.getElementById('drop_encode');
+  dropZone.addEventListener('dragover', handleDragOver, false);
+  dropZone.addEventListener('drop', handleSelectEncode, false);
+</script>
+<p> </p>
+    <div class="spinner" id='spinner'></div>
+    <div class="emscripten" id="status">Downloading...</div>
+    <div class="emscripten">
+      <progress value="0" max="100" id="progress" hidden=1></progress>
+    </div>
+    <textarea id='output' rows="14", cols="120" wrap="off"></textarea>
+    <br />
+
+    <script type='text/javascript'>
+      var statusElement = document.getElementById('status');
+      var progressElement = document.getElementById('progress');
+      var spinnerElement = document.getElementById('spinner');
+
+      var Module = {
+        preRun: [],
+        postRun: [],
+        print: (function() {
+          var element = document.getElementById('output');
+          if (element) element.value = ''; // clear browser cache
+          return function(text) {
+            if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+            // These replacements are necessary if you render to raw HTML
+            //text = text.replace(/&/g, "&amp;");
+            //text = text.replace(/</g, "&lt;");
+            //text = text.replace(/>/g, "&gt;");
+            //text = text.replace('\n', '<br>', 'g');
+            console.log(text);
+            if (element) {
+              element.value += text + "\n";
+              element.scrollTop = element.scrollHeight; // focus on bottom
+            }
+          };
+        })(),
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          if (0) { // XXX disabled for safety typeof dump == 'function') {
+            dump(text + '\n'); // fast, straight to the real console
+          } else {
+            console.error(text);
+          }
+        },
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Date.now() < 30) return; // if this is a progress update, skip it if too soon
+          if (m) {
+            text = m[1];
+            progressElement.value = parseInt(m[2])*100;
+            progressElement.max = parseInt(m[4])*100;
+            progressElement.hidden = false;
+            spinnerElement.hidden = false;
+          } else {
+            progressElement.value = null;
+            progressElement.max = null;
+            progressElement.hidden = true;
+            if (!text) spinnerElement.style.display = 'none';
+          }
+          statusElement.innerHTML = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      window.onerror = function(event) {
+        // TODO: do not warn on ok events like simulating an infinite loop or exitStatus
+        Module.setStatus('Exception thrown, see JavaScript console');
+        spinnerElement.style.display = 'none';
+        Module.setStatus = function(text) {
+          if (text) Module.printErr('[post-exception status] ' + text);
+        };
+      };
+    </script>
+<p>Develop by <a href="https://twitter.com/dominikhlbg">Dominik Homberger</a></p>
+</body>
+</html>
